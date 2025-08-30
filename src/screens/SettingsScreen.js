@@ -1,4 +1,5 @@
 // src/screens/SettingsScreen.js
+import * as Storage from '../services/storage';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
@@ -51,16 +52,14 @@ export default function SettingsScreen({ navigation }) {
 
   // İlk yükleme
   useEffect(() => {
-    (async () => {
-      try {
-        const pairs = await AsyncStorage.multiGet(['focusTime', 'shortBreak', 'longBreak']);
-        const map = Object.fromEntries(pairs || []);
-        if (map.focusTime) setFocusTime(String(map.focusTime));
-        if (map.shortBreak) setShortBreak(String(map.shortBreak));
-        if (map.longBreak) setLongBreak(String(map.longBreak));
-      } catch {}
-    })();
-  }, []);
+  (async () => {
+    const map = await Storage.loadDurations();
+    if (map.focusTime)  setFocusTime(String(map.focusTime));
+    if (map.shortBreak) setShortBreak(String(map.shortBreak));
+    if (map.longBreak)  setLongBreak(String(map.longBreak));
+  })();
+}, []);
+
 
   // Sayısal değerler
   const values = useMemo(() => {
@@ -96,37 +95,26 @@ export default function SettingsScreen({ navigation }) {
   };
 
   const saveSettings = async () => {
-    if (saving) return;
-    setSaving(true);
-    const { f, s, l } = values;
-    try {
-      await AsyncStorage.multiSet([
-        ['focusTime', String(f)],
-        ['shortBreak', String(s)],
-        ['longBreak', String(l)],
-      ]);
-      try { await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch {}
-      if (Platform.OS === 'android') {
-        ToastAndroid.show('Ayarlar kaydedildi', ToastAndroid.SHORT);
-      }
-      // PomodoroScreen’e canlı güncelle
-      DeviceEventEmitter.emit('settingsUpdated', {
-        focusTime: f,
-        shortBreak: s,
-        longBreak: l,
-      });
-      setDirty(false);
-      navigation.goBack();
-    } catch (e) {
-      if (Platform.OS === 'android') {
-        ToastAndroid.show('Kaydetme hatası', ToastAndroid.SHORT);
-      } else {
-        Alert.alert('Hata', 'Ayarlar kaydedilemedi.');
-      }
-    } finally {
-      setSaving(false);
+  if (saving) return;
+  setSaving(true);
+  const { f, s, l } = values;
+  try {
+    await Storage.saveDurations({ focusTime: f, shortBreak: s, longBreak: l });
+    try { await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch {}
+    if (Platform.OS === 'android') {
+      ToastAndroid.show('Ayarlar kaydedildi', ToastAndroid.SHORT);
     }
-  };
+    DeviceEventEmitter.emit('settingsUpdated', { focusTime: f, shortBreak: s, longBreak: l });
+    setDirty(false);
+    navigation.goBack();
+  } catch (e) {
+    if (Platform.OS === 'android') ToastAndroid.show('Kaydetme hatası', ToastAndroid.SHORT);
+    else Alert.alert('Hata', 'Ayarlar kaydedilemedi.');
+  } finally {
+    setSaving(false);
+  }
+};
+
 
   const sendTestNotification = async () => {
     await Notifications.scheduleNotificationAsync({
